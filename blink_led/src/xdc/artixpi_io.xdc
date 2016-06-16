@@ -10,7 +10,7 @@ set_property PACKAGE_PIN AB21 [get_ports usr_led1]
 set_property PACKAGE_PIN AB20 [get_ports usr_led2]
 
 
-set_property BITSTREAM.CONFIG.CONFIGRATE 104 [current_design]
+set_property BITSTREAM.CONFIG.CONFIGRATE 66 [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]
 set_property CFGBVS VCCO [current_design]
 set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES [current_design]
