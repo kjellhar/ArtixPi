@@ -34,7 +34,7 @@ use IEEE.STD_LOGIC_1164.ALL;
 entity blink_led is
     Port ( 
         clk1 : in STD_LOGIC;
-        clk_en : out std_logic;
+        clk1_en : out std_logic;
         usr_led1 : out std_logic;
         usr_led2 : out std_logic);
 end blink_led;
@@ -88,7 +88,7 @@ begin
 
     usr_led1 <= led1;
     usr_led2 <= led2;
-    clk_en <= clk_en_i;
+    clk1_en <= clk_en_i;
 
 
 end Behavioral;

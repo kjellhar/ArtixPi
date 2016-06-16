@@ -51,8 +51,8 @@ if {[string equal [get_filesets -quiet sources_1] ""]} {
 # Set 'sources_1' fileset object
 set obj [get_filesets sources_1]
 set files [list \
- "[file normalize "$origin_dir/src/ip/clk_wiz_0/clk_wiz_0.xci"]"\
  "[file normalize "$origin_dir/src/hdl/blink_led.vhd"]"\
+ "[file normalize "$origin_dir/src/ip/clk_wiz_0/clk_wiz_0.xci"]"\
 ]
 add_files -norecurse -fileset $obj $files
 
@@ -65,6 +65,7 @@ if {[string equal [get_filesets -quiet constrs_1] ""]} {
 set obj [get_filesets constrs_1]
 set files [list \
  "[file normalize "$origin_dir/src/xdc/artixpi_io.xdc"]"\
+ "[file normalize "$origin_dir/src/xdc/artixpi_config_spi.xdc"]"\
 ]
 add_files -norecurse -fileset $obj $files
 
