@@ -21,6 +21,7 @@
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.numeric_std.all;
 
 -- Uncomment the following library declaration if using
 -- arithmetic functions with Signed or Unsigned values
@@ -37,9 +38,9 @@ entity top is
            usr_led1 : out std_logic;
            usr_led2 : out std_logic;
            PI_GPIO8 : in std_logic;     -- SPI SS_N
-           PI_GPIO9 : in std_logic;     -- SPI_CLK
+           PI_GPIO9 : out std_logic;     -- SPI_MISO
            PI_GPIO10 : in std_logic;    -- SPI_MOSI
-           PI_GPIO11 : out std_logic);  -- SPI_MISO
+           PI_GPIO11 : in std_logic);  -- SPI_CLK
 end top;
 
 architecture Behavioral of top is
@@ -52,41 +53,42 @@ architecture Behavioral of top is
     end component;
     
     component spi_slave 
-        Generic (   
-            N : positive := 32;                                             -- 32bit serial word length is default
-            CPOL : std_logic := '0';                                        -- SPI mode selection (mode 0 default)
-            CPHA : std_logic := '0';                                        -- CPOL = clock polarity, CPHA = clock phase.
-            PREFETCH : positive := 3);                                      -- prefetch lookahead cycles
-        Port (  
-            clk_i : in std_logic := 'X';                                    -- internal interface clock (clocks di/do registers)
-            spi_ssel_i : in std_logic := 'X';                               -- spi bus slave select line
-            spi_sck_i : in std_logic := 'X';                                -- spi bus sck clock (clocks the shift register core)
-            spi_mosi_i : in std_logic := 'X';                               -- spi bus mosi input
-            spi_miso_o : out std_logic := 'X';                              -- spi bus spi_miso_o output
-            di_req_o : out std_logic;                                       -- preload lookahead data request line
-            di_i : in  std_logic_vector (N-1 downto 0) := (others => 'X');  -- parallel load data in (clocked in on rising edge of clk_i)
-            wren_i : in std_logic := 'X';                                   -- user data write enable
-            wr_ack_o : out std_logic;                                       -- write acknowledge
-            do_valid_o : out std_logic;                                     -- do_o data valid strobe, valid during one clk_i rising edge.
-            do_o : out  std_logic_vector (N-1 downto 0);                    -- parallel output (clocked out on falling clk_i)
-            --- debug ports: can be removed for the application circuit ---
-            do_transfer_o : out std_logic;                                  -- debug: internal transfer driver
-            wren_o : out std_logic;                                         -- debug: internal state of the wren_i pulse stretcher
-            rx_bit_next_o : out std_logic;                                  -- debug: internal rx bit
-            state_dbg_o : out std_logic_vector (3 downto 0);                -- debug: internal state register
-            sh_reg_dbg_o : out std_logic_vector (N-1 downto 0)              -- debug: internal shift register
-        );                      
+        Generic (
+            N : positive := 8;
+            CPOL : std_logic := '0';           
+            CPHA : std_logic := '0'        
+            );
+    
+        Port ( clk : in STD_LOGIC;
+                
+               -- External SPI signals  
+               spi_ss_n : in STD_LOGIC;
+               spi_clk : in STD_LOGIC;
+               spi_mosi : in STD_LOGIC;
+               spi_miso : out STD_LOGIC;
+               
+               -- Internal data signals
+               di : out STD_LOGIC_VECTOR (N-1 downto 0);        -- Data received from SPI
+               do : in STD_LOGIC_VECTOR (N-1 downto 0);         -- Data to be transmitted over SPI
+               
+               di_valid : out std_logic;     -- High for one clock cycle to indicate a new word is present
+               do_wren : in std_logic;       -- Write a data word to the transmit register               
+               do_wrack : out std_logic);    -- High for one clock cycle when the transmission starts.
+                                             -- The next data word can be written as soon as this signal goes low.
      end component;
     
 
     signal clk100m : std_logic; 
     
-    signal di_req : std_logic;
-    signal do_valid : std_logic;
+    signal do_req : std_logic;
+    signal di_valid : std_logic;
     signal do : std_logic_vector(7 downto 0);
-    signal di : std_logic_vector(7 downto 0) := "00000000";
-    signal wren : std_logic := '0';
-    signal wr_ack : std_logic;
+    signal di : std_logic_vector(7 downto 0);
+    signal do_wren : std_logic := '0';
+    signal do_wrack : std_logic;
+    
+    signal reg_do : std_logic_vector (7 downto 0) := "00000000";
+    signal reg_di : std_logic_vector (7 downto 0);
        
 begin
     clkgen : clk_wiz_0
@@ -101,23 +103,53 @@ begin
     
     u_spi_slave : spi_slave
         generic map (
-            N => 8
+            N => 8,
+            CPOL => '0',
+            CPHA => '0'
         )
         port map (
-            clk_i => clk100m,
-            spi_ssel_i => PI_GPIO8,
-            spi_sck_i => PI_GPIO9,
-            spi_mosi_i => PI_GPIO10,
-            spi_miso_o => PI_GPIO11,
-            di_req_o => di_req,
-            di_i => di,
-            wren_i => wren,
-            wr_ack_o => wr_ack,
-            do_valid_o => do_valid,
-            do_o => do             
+            clk => clk100m,
+            spi_ss_n => PI_GPIO8,
+            spi_clk => PI_GPIO11,
+            spi_mosi => PI_GPIO10,
+            spi_miso => PI_GPIO9,
+
+            di => di,
+            do => do,
+             
+            di_valid => di_valid,
+            do_wren => do_wren,               
+            do_wrack => do_wrack    
         );
+        
+        
+        
+    process
+        variable counter : integer range 0 to 255 := 0;
     
-    usr_led1 <= do(0);
-    usr_led2 <= do(1);
+    begin
+        wait until rising_edge (clk100m);
+        
+        if di_valid='1' then
+            reg_di <= di;      
+            counter := counter + 1;
+            
+            reg_do <= std_logic_vector (TO_UNSIGNED(counter, 8));
+        end if;
+        
+        if di_valid='1' then
+            do_wren <= '1';
+        else
+            do_wren <= '0';
+        end if;
+        
+        
+        
+    end process;
+    
+    usr_led1 <= reg_di(0);
+    usr_led2 <= reg_di(1);
+    
+    do <= reg_do;
 
 end Behavioral;
