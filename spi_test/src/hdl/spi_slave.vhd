@@ -33,9 +33,7 @@ use IEEE.STD_LOGIC_1164.ALL;
 
 entity spi_slave is
     Generic (
-        N : positive := 8;
-        CPOL : std_logic := '0';           
-        CPHA : std_logic := '0'        
+        N : positive := 8  
         );
 
     Port ( clk : in STD_LOGIC;
@@ -50,162 +48,106 @@ entity spi_slave is
            di : out STD_LOGIC_VECTOR (N-1 downto 0);        -- Data received from SPI
            do : in STD_LOGIC_VECTOR (N-1 downto 0);         -- Data to be transmitted over SPI
            
-           di_valid : out std_logic;     -- High for one clock cycle to indicate a new word is present
+           data_valid : out std_logic;     -- High for one clock cycle to indicate a new word is present
            do_wren : in std_logic;       -- Write a data word to the transmit register               
-           do_wrack : out std_logic);    -- High for one clock cycle when the transmission starts.
+           data_busy : out std_logic);    -- High for one clock cycle when the transmission starts.
                                          -- The next data word can be written as soon as this signal goes low.
 end spi_slave;
 
 architecture Behavioral of spi_slave is
 
-    -- constants to control FlipFlop synthesis
-    constant CAPTURE_EDGE  : std_logic := (CPOL xnor CPHA);
-    constant CHANGE_EDGE : std_logic := (CPOL xor CPHA);
-
-    type spi_state_t is (
-        IDLE,
-        INIT_TRANSACTION,
-        SHIFTING_DATA,
-        WORD_COMPLETE
-    );
-
-    signal spi_state : spi_state_t := IDLE;
-    signal spi_state_next : spi_state_t;
     
-    signal spi_clk_buf : std_logic := CPOL;
-    signal spi_capture_edge : std_logic;
-    signal spi_change_edge : std_logic;
- 
-    signal di_buf : std_logic;
-    signal di_reg : std_logic_vector(N-1 downto 0);
-    signal do_reg : std_logic_vector(N-1 downto 0);
+    signal do_buf : std_logic_vector(N-1 downto 0);
     signal do_i : std_logic_vector(N-1 downto 0);
     
-    signal bit_counter : integer range 0 to N-1 := 0;
+    
+    -- Signals used in the spi_clk domain
+    signal di_reg : std_logic_vector(N-1 downto 0);
+    signal di_buf : std_logic_vector(N-1 downto 0);    
+    signal in_count : integer range 0 to N-1 := 0;
+    signal di_valid : std_logic;
+    
+    signal do_reg : std_logic_vector(N-1 downto 0);
+    signal out_count : integer range 0 to N-1 := 0;
+    signal do_busy : std_logic;
+    
+    
+    
+    
+    -- Signals used to sync between spi_clk and clk
+    signal di_valid_sr : std_logic_vector (0 to 1);
+    signal do_busy_sr : std_logic_vector (0 to 1);
 
 begin
 
-    -- state register 
+    -- output data buffer
     process
     begin
         wait until rising_edge (clk);
-        
-        if spi_ss_n='1' then
-            spi_state <= IDLE;        
-        else
-            spi_state <= spi_state_next;
-        end if;
-    end process;
-    
-    -- Next state logic
-    process (
-        spi_state,
-        spi_ss_n,
-        bit_counter)
-    begin
-     
-        spi_state_next <= spi_state;
-     
-        case (spi_state) is
-            when IDLE =>
-                if spi_ss_n='0' then
-                    spi_state_next <= INIT_TRANSACTION;
-                end if;
-            
-            when INIT_TRANSACTION =>
-                spi_state_next <= SHIFTING_DATA;
-            
-            when SHIFTING_DATA =>
-                if bit_counter=N-1 then
-                    spi_state_next <= WORD_COMPLETE;
-                end if;
-                
-            when WORD_COMPLETE =>
-                if bit_counter = 0 then
-                    spi_state_next <= INIT_TRANSACTION;
-                end if;
-                
-            when others => 
-                spi_state_next <= IDLE;
-        end case;
-
-    
-    end process;
-    
-    
-    -- SPI clock edge detector
-    process
-    begin
-        wait until rising_edge(clk);
-        spi_clk_buf <= spi_clk;
-        
-        if (spi_clk_buf= not spi_clk) and spi_clk=CAPTURE_EDGE then 
-            spi_capture_edge <= '1';
-        else 
-            spi_capture_edge <= '0';
+        if do_wren='1' then
+            do_buf <= do;
         end if;
 
-        if (spi_clk_buf= not spi_clk) and spi_clk=CHANGE_EDGE then 
-            spi_change_edge <= '1';
-        else 
-            spi_change_edge <= '0';
-        end if;                
     end process;
+    
+   
 
     -- Input shift register
-    process
+    process (spi_clk, spi_ss_n)
     begin
-        wait until rising_edge(clk);
-        di_buf <= spi_mosi;
-        
-        if spi_capture_edge='1' then
-            di_reg <= di_reg(N-2 downto 0) & di_buf;
-            bit_counter <= bit_counter + 1;
+        if spi_ss_n = '1' then
+            in_count <= 0;
             
+        elsif rising_edge(spi_clk) then        
+            in_count <= in_count + 1;
+        
+            if in_count=7 then
+                di_buf <= di_reg(N-2 downto 0) & spi_mosi;   
+            else
+                di_reg <= di_reg(N-2 downto 0) & spi_mosi;
+            end if;
         end if;
     end process;
+
+    di_valid <= '1' when in_count=7 else '0';
     
-    
-    -- output received data word
-    process
-    begin
-        wait until rising_edge(clk);
-        
-        di_valid <= '0';
-        
-        if spi_state=WORD_COMPLETE and bit_counter=0 then
-            di <= di_reg;
-            di_valid <= '1';
-        end if;
-    end process;
-    
-    
-    -- get data word for tx
-    process
-    begin
-        wait until rising_edge(clk);
-        
-        if do_wren='1' then
-            do_i <= do;
-        end if;
-    end process;
     
     -- output shift register
-    process
+    process (spi_clk, spi_ss_n)
     begin
-        wait until rising_edge(clk);
+        if spi_ss_n = '1' then
+            out_count <= 0;
         
-        do_wrack <= '0';
-        if spi_state = IDLE then
-            do_reg <= X"00";
-        elsif spi_state = INIT_TRANSACTION then
-            do_reg <= do_i;
-            do_wrack <= '1';
-        elsif spi_change_edge='1' and bit_counter /= 0 then
-            do_reg <= do_reg(N-2 downto 0) & '0';
+        elsif falling_edge(spi_clk) then
+            
+            out_count <= out_count + 1;
+            
+            if out_count = 0 then
+                do_reg <= do_buf(N-2 downto 0) & '0';
+            else
+                do_reg <= do_reg(N-2 downto 0) & '0';
+            end if;            
         end if;
     end process;
     
-    spi_miso <= do_reg(7);
+    spi_miso <= do_buf(N-1) when out_count=0 else do_reg(N-1);
+    do_busy <= '1' when out_count=7 else
+               '1' when out_count=7 and spi_ss_n='0' else
+               '0';
+    
+    -- Sync spi_clk -> clk
+    process
+    begin
+        wait until rising_edge(clk);
+        di_valid_sr <= di_valid & di_valid_sr(0 to 0);
+        do_busy_sr <= do_busy & do_busy_sr(0 to 0);        
+        
+    end process;    
+    
+    di <= di_buf;
+    data_valid <= di_valid_sr(1);
+    data_busy <= do_busy_sr(1);
+
+    
 
 end Behavioral;

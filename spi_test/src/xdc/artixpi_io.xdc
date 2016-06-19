@@ -164,4 +164,4 @@ set_property PACKAGE_PIN N22 [get_ports PI_GPIO11]
 #set_property IOSTANDARD LVCMOS33 [get_ports P2_EXT8]
 #set_property PACKAGE_PIN AB3 [get_ports P2_EXT8]
 
-
+set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets PI_GPIO11_IBUF]

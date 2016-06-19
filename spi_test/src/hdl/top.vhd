@@ -54,9 +54,7 @@ architecture Behavioral of top is
     
     component spi_slave 
         Generic (
-            N : positive := 8;
-            CPOL : std_logic := '0';           
-            CPHA : std_logic := '0'        
+            N : positive := 8   
             );
     
         Port ( clk : in STD_LOGIC;
@@ -71,9 +69,9 @@ architecture Behavioral of top is
                di : out STD_LOGIC_VECTOR (N-1 downto 0);        -- Data received from SPI
                do : in STD_LOGIC_VECTOR (N-1 downto 0);         -- Data to be transmitted over SPI
                
-               di_valid : out std_logic;     -- High for one clock cycle to indicate a new word is present
+               data_valid : out std_logic;     -- High for one clock cycle to indicate a new word is present
                do_wren : in std_logic;       -- Write a data word to the transmit register               
-               do_wrack : out std_logic);    -- High for one clock cycle when the transmission starts.
+               data_busy : out std_logic);    -- High for one clock cycle when the transmission starts.
                                              -- The next data word can be written as soon as this signal goes low.
      end component;
     
@@ -85,7 +83,7 @@ architecture Behavioral of top is
     signal do : std_logic_vector(7 downto 0);
     signal di : std_logic_vector(7 downto 0);
     signal do_wren : std_logic := '0';
-    signal do_wrack : std_logic;
+    signal do_busy : std_logic;
     
     signal reg_do : std_logic_vector (7 downto 0) := "00000000";
     signal reg_di : std_logic_vector (7 downto 0);
@@ -103,9 +101,7 @@ begin
     
     u_spi_slave : spi_slave
         generic map (
-            N => 8,
-            CPOL => '0',
-            CPHA => '0'
+            N => 8
         )
         port map (
             clk => clk100m,
@@ -117,9 +113,9 @@ begin
             di => di,
             do => do,
              
-            di_valid => di_valid,
+            data_valid => di_valid,
             do_wren => do_wren,               
-            do_wrack => do_wrack    
+            data_busy => do_busy   
         );
         
         
@@ -134,10 +130,10 @@ begin
             reg_di <= di;      
             counter := counter + 1;
             
-            reg_do <= std_logic_vector (TO_UNSIGNED(counter, 8));
+            --reg_do <= std_logic_vector (TO_UNSIGNED(counter, 8));
         end if;
         
-        if di_valid='1' then
+        if do_busy='0' then
             do_wren <= '1';
         else
             do_wren <= '0';
@@ -147,8 +143,10 @@ begin
         
     end process;
     
-    usr_led1 <= reg_di(0);
-    usr_led2 <= reg_di(1);
+    reg_do <= reg_di;
+    
+    --usr_led1 <= reg_di(0);
+    --usr_led2 <= reg_di(1);
     
     do <= reg_do;
 
