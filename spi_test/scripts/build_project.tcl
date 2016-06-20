@@ -52,7 +52,7 @@ if {[string equal [get_filesets -quiet sources_1] ""]} {
 set obj [get_filesets sources_1]
 set files [list \
  "[file normalize "$origin_dir/src/hdl/top.vhd"]"\
- "[file normalize "$origin_dir/src/hdl/spi_slave.vhd"]"\
+ "[file normalize "$origin_dir/src/hdl/ocore/spi_slave.vhd"]"\
  "[file normalize "$origin_dir/src/ip/clk_wiz_0/clk_wiz_0.xci"]"\
 ]
 add_files -norecurse -fileset $obj $files
